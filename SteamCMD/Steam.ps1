@@ -71,14 +71,40 @@ begin {
 
   $commands = @(
     @{
-      name    = 'exit'
-      aliases = 'quit', 'bail', 'logout'
-      action  = { $should_exit = $true }
+      name        = 'exit'
+      aliases     = 'quit', 'bail', 'logout'
+      action      = { $should_exit = $true }
+      description = 'Exits the script'
     },
     @{
-      name    = 'help'
-      aliases = @()
-      action  = { Log-Info 'This is a {0} message' 'help' }
+      name        = 'help'
+      aliases     = @()
+      action      = {
+        if ($arguments.Length -lt 1) {
+          $all_commands = @()
+          foreach ($c in $commands) {
+            $all_commands += $c.name
+          }
+
+          Log-Info 'Available commands: {0}. Use {1} <{2}> to get info about specific command' ((Join-String -InputObject $all_commands -Separator ', '), 'help', 'command')
+        } else {
+          $c = Find-CommandDefinition $arguments[0]
+
+          if (!$c) {
+            Log-Warn 'Command {0} not found' $arguments[0]
+          } else {
+            Log-Info 'Command {0}: {1}' @($c.name, ($c.description ?? 'No description'))
+          }
+        }
+      }
+      description = 'Gets help message for commands'
+    },
+    @{
+      name    = 'install'
+      aliases = @('update')
+      action  = {
+        Install-App $arguments
+      }
     }
   )
 
@@ -426,17 +452,27 @@ begin {
     return $null
   }
 
+  function Install-App {
+    param(
+      [string[]]$arguments
+    )
+
+
+  }
+
   function Get-UserCommand {
     Write-Colorized '[  <green>>>></green>  ] '
     PrevLine
 
     $readKeyOptions = 8 -bor 2
     $in = ''
+    $spl = @()
     [object]$cmd = $null
     while ($true) {
       $color = 'Gray'
 
-      $cmd = Find-CommandDefinition -name_or_alias ($in.Split(' ', [System.StringSplitOptions]::RemoveEmptyEntries)?[0]?.ToLower())
+      $spl = $in.Split(' ', [System.StringSplitOptions]::RemoveEmptyEntries)
+      $cmd = Find-CommandDefinition -name_or_alias (($spl)?[0]?.ToLower())
       if ($cmd) {
         if ($cmd.name -eq 'exit') {
           $color = 'Red'
@@ -459,8 +495,14 @@ begin {
         $in += $key.Character.ToString()
       }
     }
+
     $Host.UI.WriteLine()
-    return $cmd
+
+    return @{
+      cmd       = $cmd
+      arguments = $spl.Length -lt 2 ? @() : $spl[1..$spl.Length]
+      raw       = $in
+    }
   }
 
   function Run-Interactive {
@@ -468,10 +510,15 @@ begin {
 
     do {
       $command = Get-UserCommand
-      Log-Info 'Got command {0}' ($command.name ?? '__empty__')
 
-      if ($command.action) {
-        Invoke-Command -ScriptBlock ($command.action) -NoNewScope
+      if (!$command.cmd) {
+        Log-Fail 'Unknown command {0}' $command.raw
+        continue
+      }
+
+      $arguments = $command.arguments
+      if ($command.cmd.action) {
+        Invoke-Command -ScriptBlock ($command.cmd.action) -NoNewScope
       }
     } until($should_exit)
   }
