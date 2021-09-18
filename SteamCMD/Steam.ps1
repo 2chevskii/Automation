@@ -7,6 +7,7 @@
 
 using namespace System.IO
 using namespace System.Diagnostics
+using namespace System.Collections.Generic
 
 [CmdletBinding(DefaultParameterSetName = 'AllParameterSets', PositionalBinding = $true)]
 param (
@@ -103,7 +104,51 @@ begin {
       name    = 'install'
       aliases = @('update')
       action  = {
-        Install-App $arguments
+        $param_dict = Parse-UserArguments $arguments
+
+        $app_id = ($param_dict['id'] ?? $param_dict['app'] ?? $param_dict['appid'])
+
+        if (!$app_id) {
+          for ($i = 0; $i -lt $param_dict['remaining'].Count; $i++) {
+            $arg = $param_dict['remaining'][$i]
+
+            if ($arg -is [int]) {
+              $app_id = $arg
+              $param_dict['remaining'].RemoveAt($i)
+            }
+          }
+        }
+
+        if (!$app_id) {
+          Log-Fail 'No {0} specified, could not perform an installation' 'App ID'
+          return
+        }
+
+        $install_directory =
+          ($param_dict['dir'] ?? $param_dict['installdir'] ?? $param_dict['install_dir'] ?? $param_dict['directory'] ?? $param_dict['location'])
+
+        if (!$install_directory) {
+          for ($i = 0; $i -lt $param_dict['remaining'].Count; $i++) {
+            $arg = $param_dict['remaining'][$i]
+
+            if ($arg -is [string]) {
+              $install_directory = $arg
+              $param_dict['remaining'].RemoveAt($i)
+            }
+          }
+        }
+
+        $clean = $param_dict['clean'] -eq $true
+        $validate = $param_dict['validate'] -eq $true
+
+        $login = ($param_dict['username'] ?? $param_dict['login'] ?? $param_dict['user'])
+        $password = ($param_dict['pass'] ?? $param_dict['password'] ?? $param_dict['psswd'])
+        $guard = ($param_dict['guard'] ?? $param_dict['code'] ?? $param_dict['sgrd'] ?? $param_dict['steam_guard'] ?? $param_dict['guard_code'] ?? $param_dict['steam_guard_code'])
+
+        $beta = ($param_dict['beta'] ?? $param_dict['branch'])
+        $beta_pass = !$beta ? '' : ($param_dict['beta_pass'] ?? $param_dict['beta_password'] ?? $param_dict['branch_pass'] ?? $param_dict['branch_password'])
+
+        Install-App -app_id $app_id -install_directory $install_directory -validate:$validate -clean:$clean -login $login -password $password -steam_guard $guard -branch_name $beta -branch_password $beta_pass
       }
     }
   )
@@ -452,12 +497,180 @@ begin {
     return $null
   }
 
+  function Get-AuthString {
+    param(
+      [string] $login,
+      [string] $password,
+      [string] $steam_guard
+    )
+
+    $auth_string = '+login '
+
+    if (!$login -or $login -eq 'anonymous') {
+      $auth_string += 'anonymous'
+      return $auth_string
+    }
+
+    $auth_string += "`"$login`""
+
+    if ($password) {
+      $auth_string += " `"$password`""
+    }
+
+    if ($steam_guard) {
+      $auth_string += " `"$steam_guard`""
+    }
+
+    return $auth_string
+  }
+
   function Install-App {
+    param (
+      [int] $app_id,
+      [string] $install_directory,
+      [string] $branch_name,
+      [string] $branch_password,
+      [switch] $validate,
+      [switch] $clean,
+      [string] $login = 'anonymous',
+      [string] $password,
+      [string] $steam_guard
+    )
+
+    if (!$install_directory) {
+      $install_directory = Join-Path -Path $script_info.dir -ChildPath 'apps' -AdditionalChildPath "app_$app_id"
+    }
+
+    if ($clean -and $validate) {
+      Log-Fail '{0} cannot be used with {1}, {0} will be omitted' ('-clean', '-validate')
+      $clean = $false
+    }
+
+    $dir_exists = Test-Path $install_directory
+
+    Log-Verbose 'Install directory "{0}" {1}' ($install_directory, ($dir_exists ? 'exists' : 'does not exist'))
+
+    if ($dir_exists -and $clean) {
+      Log-Verbose 'Cleaning installation directory...'
+      $files = Get-ChildItem -Path $install_directory -Recurse
+      Log-Verbose 'Found {0} total files' ($files.Count)
+      $files | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+      Log-Verbose 'Done cleaning installation directory'
+    }
+
+    $auth_params = Get-AuthString -login $login -password $password -steam_guard $steam_guard
+
+    $start_info = [ProcessStartInfo]::new()
+
+    $start_args = $auth_params
+    $start_args += ' +force_install_dir ' + "`"$install_directory`""
+    $start_args += ' +app_update ' + $app_id
+
+    if ($branch_name) {
+      $start_args += ' -beta ' + "`"$branch_name`""
+    }
+
+    if ($branch_password) {
+      $start_args += ' -betapassword ' + "`"$branch_password`""
+    }
+
+    if ($validate) {
+      $start_args += ' -validate'
+    }
+
+    $start_args += ' +quit'
+
+    $start_info.Arguments = $start_args
+    $start_info.FileName = $steamcmd_executable_path
+    $start_info.WorkingDirectory = $steamcmd_installation_path
+    $start_info.UseShellExecute = $false
+
+    $steamcmd = [Process]::new()
+
+    $steamcmd.StartInfo = $start_info
+
+    if (!$steamcmd.Start()) {
+      Log-Fail 'Failed to start SteamCmd'
+      return 1
+    }
+
+    $steamcmd.WaitForExit()
+    $exit_code = $steamcmd.ExitCode
+    $exit_code_meaning = $steamcmd_exit_codes[$exit_code]
+
+    Log-Info 'SteamCmd exited with code {0}::{1}' ($exit_code, $exit_code_meaning[1])
+
+    return ($exit_code_meaning[0] ? 0 : 1)
+  }
+
+  function Parse-UserArguments {
     param(
       [string[]]$arguments
     )
 
+    $reg_pattern = '(?:-(\w+)(?:\s+(?:"(.*?[^\\])")|([^-]\w+))?)|([^\s]+)'
+    $regex = [regex]::new($reg_pattern)
 
+    $dictionary = [Dictionary[string, object]]@{}
+
+    $dictionary['remaining'] = [List[object]]@()
+
+    $arg_string = [string]::Join(' ', $arguments)
+
+    $matches = $regex.Matches($arg_string)
+
+    foreach ($match in $matches) {
+      if ($match.Groups[4].Success) {
+        $val = $match.Groups[4].Value
+        if ($val.StartsWith('"') -and $val.EndsWith('"')) {
+          if ($val.Length -lt 3) {
+            continue
+          }
+
+          $val = $val.Substring(1, $val.Length - 2)
+        }
+
+        $dictionary['remaining'].Add((Try-ChangeType $val))
+        continue
+      }
+
+      $name = $match.Groups[1].Value
+
+      if (!$match.Groups[2].Success -and !$match.Groups[3].Success) {
+        $dictionary[$name] = $true
+        continue
+      }
+
+      $value = $match.Groups[2].Success ? $match.Groups[2].Value : $match.Groups[3].Value
+
+      $dictionary[$name] = (Try-ChangeType $value)
+    }
+
+    return $dictionary
+  }
+
+  function Try-ChangeType {
+    param(
+      [string]$value
+    )
+
+    $lower = $value.ToLower().Trim()
+
+    if (('true', 'ok', 'yes', 'good').Contains($lower)) {
+      return $true
+    }
+
+    if (('false', 'no', 'not', 'meh').Contains($lower)) {
+      return $false
+    }
+
+    $num = 0
+
+    if ([int]::TryParse($lower, [ref] $num)) {
+      return $num
+    }
+
+    return $value
   }
 
   function Get-UserCommand {
