@@ -23,6 +23,31 @@ param (
   [Alias('dir')]
   [string] $InstallDir,
 
+  [Parameter(ParameterSetName = 'NonInteractive', Mandatory = $false)]
+  [switch] $Validate,
+
+  [Parameter(ParameterSetName = 'NonInteractive', Mandatory = $false)]
+  [switch] $Clean,
+
+  [Parameter(ParameterSetName = 'NonInteractive', Mandatory = $false)]
+  [Alias('branch')]
+  [string] $BranchName,
+
+  [Parameter(ParameterSetName = 'NonInteractive', Mandatory = $false)]
+  [string] $BranchPass,
+
+  [Parameter(ParameterSetName = 'NonInteractive', Mandatory = $false)]
+  [Alias('user', 'username', 'l')]
+  [string] $Login,
+
+  [Parameter(ParameterSetName = 'NonInteractive', Mandatory = $false)]
+  [Alias('pass', 'p')]
+  [string] $Password,
+
+  [Parameter(ParameterSetName = 'NonInteractive', Mandatory = $false)]
+  [Alias('guard')]
+  [string] $SteamGuard,
+
   [Parameter()]
   [Alias('cid')]
   [string] $CmdInstallDir
@@ -69,6 +94,12 @@ begin {
   [string]$steamcmd_installation_path = $null
   [string]$steamcmd_executable_path = $null
   [string]$current_os_type = $null
+
+  enum ParameterType {
+    Flag
+    Named
+    Rest
+  }
 
   $commands = @(
     @{
@@ -372,7 +403,7 @@ begin {
       }
 
       if (!(Test-Path $temp_installation_dir)) {
-        mkdir $temp_installation_dir
+        New-Item -Path $temp_installation_dir -Force -ItemType Directory
         Log-Debug 'Created temporary installation path at {0}'
       }
 
@@ -381,6 +412,11 @@ begin {
         Invoke-WebRequest -Uri $download_url -UseBasicParsing -OutFile $archive_path
       } catch {
         Log-Fail 'Failed to install SteamCmd: {0}' $_.Exception.Message
+        return $false
+      }
+
+      if (!(Get-Command -Name 'tar')) {
+        Log-Fail '{0} was not found. It is required to extract steamcmd distribution, make sure to install it and retry' 'tar'
         return $false
       }
 
@@ -718,6 +754,58 @@ begin {
     }
   }
 
+  function Parse-InputString {
+    param(
+      [string]$input_string
+    )
+    $reg_cmd = [regex]::new('^(\w+)(?:\s+(.*))?$')
+    $reg_args = [regex]::new('(?:-(\w+)(?:(?:\s+|=|:)((?:"(?:[^"\\]|\\.)*")|(?:[\w\.\/\\-]+)))?)|((?:"(?:[^"\\]|\\.)*")|(?:[^\s]+))')
+
+    $cmd_args_match = $reg_cmd.Match($input_string)
+
+    if (!$cmd_args_match.Success) {
+      return @{
+        command   = $null
+        arguments = $null
+        string    = $input_string
+      }
+    }
+
+    $command = $cmd_args_match.Groups[1].Value
+
+    if (!$cmd_args_match.Groups[2].Success) {
+      $def = Find-CommandDefinition $command
+
+      if ($def) {
+        $string = "<yellow>$command</yellow>" + $input_string.Remove(0, $command.Length)
+
+        return @{
+          command    = @{
+            name = $command
+            def  = $def
+          }
+          $arguments = $null
+          string     = $string
+        }
+      } else {
+        return @{
+          command   = @{
+            name = $command
+            def  = $null
+          }
+          arguments = $null
+          string    = $input_string
+        }
+      }
+    }
+
+    $arguments = [List[object]]@()
+
+    $arg_match = $reg_args.Matches($cmd_args_match.Groups[2].Value)
+
+
+  }
+
   function Run-Interactive {
     $should_exit = $false
 
@@ -737,7 +825,19 @@ begin {
   }
 
   function Run-Standard {
+    if (!$AppId) {
+      Log-Fail 'No {0} specified, aborting' 'App ID'
+      return $script_exit_codes.APP_INSTALLATION_FAILED
+    }
 
+    $ec = Install-App -app_id $AppId -install_directory ($InstallDir ? [Path]::GetFullPath($InstallDir) : (Join-Path $script_info.dir "apps/app_$AppId")) -branch_name $BranchName -branch_password $BranchPass -validate:$Validate -clean:$Clean -steam_guard $SteamGuard -login $Login -password $Password
+
+    if ($ec -ne 0) {
+      Log-Fail 'Installation of app {0} failed' ($AppId)
+      return $script_exit_codes.APP_INSTALLATION_FAILED
+    }
+
+    return $script_exit_codes.SUCCESS
   }
 }
 
