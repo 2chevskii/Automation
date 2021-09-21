@@ -16,6 +16,6 @@ You can also optionally specify options below:
 
 - **Path**: folder, where files should be located. default: `<script location>/References`
 - **DepotDownloaderPath**: folder where DepotDownloader will be installed if not found. default: `<TEMP>/depot-downloader`
-- **ReferenceType**: `Original|Oxide|uMod` - allows to choose type of binaries you want to download. Original stands for non-patched game files, and Oxide/uMod will result in game files + respective mod files
-- **Os**: `windows|linux` - allows to choose type of OS for binaries. default: current OS
-- **Clean**: Removes old files from directory specified in `-Path` parameter
+- **ReferenceType**: `Original|Oxide|uMod` - allows to choose type of binaries you want to download. Original stands for non-patched game files, and Oxide/uMod will result in game files + respective mod files. default: `Oxide`
+- **Os**: `windows|linux` - allows to choose type of OS for binaries. default: `current OS`
+- **Clean**: Removes old files from directory specified in `-Path` parameter. default: `false`
