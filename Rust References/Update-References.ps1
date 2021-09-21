@@ -72,7 +72,7 @@ begin {
 
   # setup functions
 
-  function Get-OxideRust-DownloadLinks {
+  function Get-OxideRust-DownloadLink {
     $assets_url = (Invoke-WebRequest $oxide_releases_url | Select-Object -ExpandProperty Content | ConvertFrom-Json)[0].assets_url
     $assets = Invoke-WebRequest $assets_url | Select-Object -ExpandProperty Content | ConvertFrom-Json
     return @{
@@ -81,7 +81,7 @@ begin {
     }
   }
 
-  function Get-uModRust-DownloadLinks {
+  function Get-uModRust-DownloadLink {
     $packages = (Invoke-WebRequest $umod_manifest_url | Select-Object -ExpandProperty Content | ConvertFrom-Json).Packages
     $umod_rust = $packages | Where-Object -Property 'FileName' -EQ 'uMod.Rust.dll'
     $artifacts = $umod_rust.Resources | Where-Object -Property 'Type' -EQ 4 | Where-Object -Property 'Version' -EQ 'develop'
@@ -239,11 +239,11 @@ process {
     if ($ReferenceType -eq 'Oxide') {
       $archive_path = $oxide_archive
       $files_dir = $oxide_dir
-      $download_link = Get-OxideRust-DownloadLinks
+      $download_link = Get-OxideRust-DownloadLink
     } else {
       $archive_path = $umod_archive
       $files_dir = $umod_dir
-      $download_link = Get-uModRust-DownloadLinks
+      $download_link = Get-uModRust-DownloadLink
     }
 
     if (!$download_link) {
