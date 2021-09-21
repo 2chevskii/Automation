@@ -14,7 +14,7 @@ param (
   [ValidateSet('Original', 'Oxide', 'uMod')]
   [string] $ReferenceType = 'Oxide',
   [Parameter(Mandatory = $false)]
-  [ValidateSet('windows', 'posix')]
+  [ValidateSet('windows', 'linux')]
   [string] $Os,
   [Parameter(Mandatory = $false)]
   [switch] $Clean
@@ -157,7 +157,7 @@ process {
       Log 'Running .NET update script, accept UAC prompt/sudo password request'
 
       if ($IsWindows) {
-        Start-Process -FilePath 'powershell' -ArgumentList "$dotnet_install_path -Channel 5.0 -Verbose" -Verb RunAs -Wait
+        Start-Process -FilePath 'pwsh' -ArgumentList "$dotnet_install_path -Channel 5.0 -Verbose" -Verb RunAs -Wait
       } else {
         . sudo pwsh $dotnet_install_path -Channel 5.0 -Verbose
       }
