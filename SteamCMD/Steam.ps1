@@ -48,6 +48,12 @@ param(
   [string] $Password = $null
 )
 
+$steamcmd_download_urls = @{
+  windows = 'https://steamcdn-a.akamaihd.net/client/installer/steamcmd.zip'
+  linux   = 'https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz'
+  osx     = 'https://steamcdn-a.akamaihd.net/client/installer/steamcmd_osx.tar.gz'
+}
+
 $script_template = @'
 @ShutdownOnFailedCommand 1
 @NoPromptForPassword 1
