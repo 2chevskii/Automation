@@ -264,12 +264,24 @@ process {
 
   Log 'Performing an update-run...'
 
-  & $scmd_exec +quit
+  try {
+    & $scmd_exec +quit
+
+    $cm = $steamcmd_exit_codes[$LASTEXITCODE]
+
+    if (-not $cm[0]) {
+      throw [Exception]::new('Steamcmd exited with code ' + $LASTEXITCODE + ': ' + $cm[1])
+    }
+  } catch {
+    Log-Err $_.Exception.Message
+    exit $script_exit_codes.STEAMCMD_INSTALLATION_FAILED
+  }
 
   Log 'SteamCmd update finished'
 
   if (-not $should_download_app) {
     Log-Warn 'No app was chosen for installation, exiting'
+    exit $script_exit_codes.SUCCESS
   } else {
     Log-Info 'Installing app {0}' $AppId
 
@@ -294,11 +306,21 @@ process {
     Log-Warn 'Emitting startup script at {0}' $startup_script_path
     $scrpt_txt | Out-File -FilePath $startup_script_path -Force
 
-    & $scmd_exec +runscript $startup_script_path
+    try {
+      & $scmd_exec +runscript $startup_script_path
 
-    $exc = $LASTEXITCODE
+      $cm = $steamcmd_exit_codes[$LASTEXITCODE]
 
-    Write-Host "Exit code: $exc"
+      if (-not $cm[0]) {
+        throw [Exception]::new('Steamcmd exited with code ' + $LASTEXITCODE + ': ' + $cm[1])
+      } else {
+        Log-Info 'App {0} installation finished' $AppId
+        exit $script_exit_codes.SUCCESS
+      }
+    } catch {
+      Log-Err $_.Exception.Message
+      exit $script_exit_codes.APP_INSTALLATION_FAILED
+    }
   }
 }
 
