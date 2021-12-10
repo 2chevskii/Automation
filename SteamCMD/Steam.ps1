@@ -3,6 +3,7 @@
 #requires -version 6.0
 #requires -modules PSColorizer
 
+using namespace System
 using namespace System.IO
 
 [CmdletBinding(
@@ -48,13 +49,14 @@ param(
   [string] $Password = $null
 )
 
-$steamcmd_download_urls = @{
-  windows = 'https://steamcdn-a.akamaihd.net/client/installer/steamcmd.zip'
-  linux   = 'https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz'
-  osx     = 'https://steamcdn-a.akamaihd.net/client/installer/steamcmd_osx.tar.gz'
-}
+begin {
+  $steamcmd_download_urls = @{
+    windows = 'https://steamcdn-a.akamaihd.net/client/installer/steamcmd.zip'
+    linux   = 'https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz'
+    osx     = 'https://steamcdn-a.akamaihd.net/client/installer/steamcmd_osx.tar.gz'
+  }
 
-$script_template = @'
+  $script_template = @'
 @ShutdownOnFailedCommand 1
 @NoPromptForPassword 1
 login %login-string%
@@ -63,29 +65,60 @@ app_update %app-id% %branch% %validate%
 quit
 '@
 
-$should_login = ![string]::IsNullOrWhiteSpace($Username) -and !($Username -like 'anonymous')
-$should_download_app = ($AppId -ne $null) -and ($AppId -ne 0)
-
-function Get-LoginString {
-  if (!$should_login) {
-    return 'anonymous'
-  } else {
-    return "$Username $Password"
+  $steamcmd_exit_codes = @{
+    0  = ($true, 'SUCCESS')
+    1  = ($false, 'UNKNOWN ERROR')
+    2  = ($false, 'ALREADY LOGGED IN')
+    3  = ($false, 'NO CONNECTION')
+    5  = ($false, 'INVALID PASSWORD')
+    7  = ($true, 'INITIALIZED')
+    8  = ($false, 'FAILED TO INSTALL')
+    63 = ($false, 'STEAM GUARD REQUIRED')
   }
-}
 
-function Resolve-InstallDir {
-  return [Path]::GetFullPath($InstallDir)
-}
+  $script_exit_codes = @{
+    SUCCESS                      = 0
+    STEAMCMD_INSTALLATION_FAILED = 1
+    APP_INSTALLATION_FAILED      = 2
+  }
 
-function Clean-InstallDir {
-  param($install_dir)
+  $should_login = ![string]::IsNullOrWhiteSpace($Username) -and !($Username -like 'anonymous')
+  $should_download_app = ($AppId -ne $null) -and ($AppId -ne 0)
 
-  if (Test-Path $install_dir) {
-    $contents = Get-ChildItem $install_dir
+  $temp_dir = [Path]::Combine([Path]::GetTempPath(), 'automation', 'steamcmd')
+  $archives_dir = [Path]::Combine($temp_dir, 'archives')
+  $steamcmd_install_dir = [Path]::Combine($temp_dir, 'steamcmd_install')
 
-    foreach ($item in $contents) {
-      Remove-Item -Path ($item.FullName) -Recurse -Force
+  function Get-LoginString {
+    if (!$should_login) {
+      return 'anonymous'
+    } else {
+      return "$Username $Password"
     }
   }
+
+  function Resolve-InstallDir {
+    return [Path]::GetFullPath($InstallDir)
+  }
+
+  function Clean-InstallDir {
+    param($install_dir)
+
+    if (Test-Path $install_dir) {
+      $contents = Get-ChildItem $install_dir
+
+      foreach ($item in $contents) {
+        Remove-Item -Path ($item.FullName) -Recurse -Force
+      }
+    }
+  }
+
+}
+
+process {
+
+}
+
+end {
+
 }
