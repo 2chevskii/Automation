@@ -54,6 +54,11 @@ param(
 )
 
 begin {
+  $BASE_TEMP_PATH = [Path]::Combine([Path]::GetTempPath(), 'steam-app-installer')
+  $DOWNLOAD_PATH = [Path]::Combine($BASE_TEMP_PATH, 'dist')
+  $CMD_INSTALL_PATH = [Path]::Combine($BASE_TEMP_PATH, 'steamcmd')
+  $SCRIPT_PATH = [Path]::Combine($BASE_TEMP_PATH, 'startup.txt')
+
   $STEAMCMD_DL_URL = @{
     windows = 'https://steamcdn-a.akamaihd.net/client/installer/steamcmd.zip'
     linux   = 'https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz'
@@ -71,19 +76,84 @@ quit
 
   $STEAMCMD_EXIT_CODES_PATH = [Path]::GetFullPath("$PsScriptRoot/steamcmd_exit_codes.json")
 
+  $global:STEAMCMD_EXIT_CODES_STORAGE = $null
+
   function Load-SteamCmdExitCodeFile {
     $json = Get-Content -Path $STEAMCMD_EXIT_CODES_PATH -Raw
 
-    $codes = ConvertFrom-Json $json
+    $global:STEAMCMD_EXIT_CODES_STORAGE = ConvertFrom-Json -InputObject $json -AsHashtable
+  }
 
-    return $codes
+  function Get-SteamCmdExitCodeDescription {
+    param(
+      [string]$code
+    )
+
+    $entry = $STEAMCMD_EXIT_CODES_STORAGE[$code]
+
+    return $entry.description
+  }
+
+  function Get-SteamCmdExitCodeStatus {
+    param(
+      [string]$code
+    )
+
+    $entry = $STEAMCMD_EXIT_CODES_STORAGE[$code]
+
+    return $entry.success
+  }
+
+  function Get-LoginString {
+    if ($null -eq $Username) {
+      return 'anonymous'
+    }
+
+    return "$Username $Password"
+  }
+
+  function Get-SteamCmdDownloadUrl {
+    param (
+      [Parameter]
+      [ValidateSet('windows', 'linux', 'osx')]
+      [string] $Platform
+    )
+
+    return $STEAMCMD_DL_URL[$Platform]
+  }
+
+  function Get-SteamCmdArchiveName {
+    param(
+      [Parameter]
+      [ValidateSet('windows', 'linux', 'osx')]
+      [string] $Platform
+    )
+
+    switch ($Platform) {
+      windows {
+        return 'steamcmd.zip'
+      }
+      Default {
+        return 'steamcmd.tar.gz'
+      }
+    }
+  }
+
+  function Get-InstallationPlatform {
+    if ($IsWindows) {
+      return 'windows'
+    } elseif ($IsLinux) {
+      return 'linux'
+    } else {
+      return 'osx'
+    }
   }
 }
 process {
 
-  $json_codes = Load-SteamCmdExitCodeFile
+  Load-SteamCmdExitCodeFile
 
-  Write-Output $json_codes
+
 }
 end {
 }
