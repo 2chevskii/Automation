@@ -1,0 +1,34 @@
+{
+  "0": {
+    "success": true,
+    "description": "All applications installed successfully"
+  },
+  "1": {
+    "success": false,
+    "description": "Unknown error while installing applications"
+  },
+  "2": {
+    "success": false,
+    "description": "Authentication error - user already logged in"
+  },
+  "3": {
+    "success": false,
+    "description": "No connection to Steam"
+  },
+  "5": {
+    "success": false,
+    "description": "Authentication error - password invalid"
+  },
+  "7": {
+    "success": true,
+    "description": "SteamCmd initialization finished successfully"
+  },
+  "8": {
+    "success": false,
+    "description": "App installation failed"
+  },
+  "63": {
+    "success": false,
+    "description": "Authentication error - Steam Guard code required"
+  }
+}
