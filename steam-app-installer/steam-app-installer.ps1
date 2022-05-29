@@ -17,8 +17,7 @@ param(
 
   [Parameter(
     HelpMessage = 'Directory to use for app installation',
-    Position = 1,
-    Mandatory = $true
+    Position = 1
   )]
   [Alias('p', 'path')]
   [string] $InstallPath = "$([Path]::GetFullPath("$PWD/app_$AppId"))",
@@ -55,8 +54,36 @@ param(
 )
 
 begin {
+  $STEAMCMD_DL_URL = @{
+    windows = 'https://steamcdn-a.akamaihd.net/client/installer/steamcmd.zip'
+    linux   = 'https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz'
+    osx     = 'https://steamcdn-a.akamaihd.net/client/installer/steamcmd_osx.tar.gz'
+  }
+
+  $SCRIPT_TEMPLATE = @'
+@ShutdownOnFailedCommand 1
+@NoPromptForPassword 1
+force_install_dir "%install-dir%"
+login %login-string%
+app_update %app-id%%branch%%validate%
+quit
+'@
+
+  $STEAMCMD_EXIT_CODES_PATH = [Path]::GetFullPath("$PsScriptRoot/steamcmd_exit_codes.json")
+
+  function Load-SteamCmdExitCodeFile {
+    $json = Get-Content -Path $STEAMCMD_EXIT_CODES_PATH -Raw
+
+    $codes = ConvertFrom-Json $json
+
+    return $codes
+  }
 }
 process {
+
+  $json_codes = Load-SteamCmdExitCodeFile
+
+  Write-Output $json_codes
 }
 end {
 }
