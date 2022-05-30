@@ -70,7 +70,7 @@ begin {
 @NoPromptForPassword 1
 force_install_dir "%install-dir%"
 login %login-string%
-app_update %app-id%%branch%%validate%
+app_update %app-id% %branch% %validate%
 quit
 '@
 
@@ -105,7 +105,7 @@ quit
   }
 
   function Get-LoginString {
-    if ($null -eq $Username) {
+    if (-not $Username) {
       return 'anonymous'
     }
 
@@ -114,7 +114,6 @@ quit
 
   function Get-SteamCmdDownloadUrl {
     param (
-      [Parameter]
       [ValidateSet('windows', 'linux', 'osx')]
       [string] $Platform
     )
@@ -124,7 +123,6 @@ quit
 
   function Get-SteamCmdArchiveName {
     param(
-      [Parameter]
       [ValidateSet('windows', 'linux', 'osx')]
       [string] $Platform
     )
@@ -139,6 +137,22 @@ quit
     }
   }
 
+  function Get-SteamCmdExecName {
+    param(
+      [ValidateSet('windows', 'linux', 'osx')]
+      [string] $Platform
+    )
+
+    switch($Platform) {
+      windows {
+        return 'steamcmd.exe'
+      }
+      Default {
+        return 'steamcmd'
+      }
+    }
+  }
+
   function Get-InstallationPlatform {
     if ($IsWindows) {
       return 'windows'
@@ -148,12 +162,104 @@ quit
       return 'osx'
     }
   }
+
+  function Install-SteamCmd {
+    param(
+      $dl_url,
+      $arch_path
+    )
+
+    Write-Output "Installing SteamCmd..."
+
+    Write-Verbose "Cleaning installation directory and old archives..."
+
+    if(Test-Path -Path $CMD_INSTALL_PATH) {
+      Get-ChildItem $CMD_INSTALL_PATH | Remove-Item -Force -Recurse
+    }
+
+    if(Test-Path -Path $arch_path) {
+      Remove-Item $arch_path
+    }
+
+    Write-Verbose "Downloading SteamCmd distribution from $dl_url"
+
+    Invoke-WebRequest -Uri $dl_url -UseBasicParsing -OutFile $arch_path
+
+    Write-Verbose "Archive downloaded to $arch_path"
+
+    Expand-Archive -Path $arch_path -DestinationPath $CMD_INSTALL_PATH
+
+    Write-Verbose "Cleaning unnecessary distribution files"
+
+    Remove-Item -Path $arch_path
+
+    Write-Output "SteamCmd installed"
+  }
+
+  function Clean-InstallDir {
+    Write-Output "Cleaning installation directory: $InstallPath"
+
+    if(Test-Path -Path $InstallPath) {
+      Remove-Item -Path $InstallPath -Force -Recurse
+    }
+  }
+
+  function Compose-StartupScript {
+    param($login_string)
+
+    Write-Output "Creating startup script..."
+
+    $builder = [System.Text.StringBuilder]::new($SCRIPT_TEMPLATE)
+
+    $builder.Replace("%install-dir%", $InstallPath).
+    Replace("%login-string%", $login_string).
+    Replace("%app-id%", $AppId.ToString()).
+    Replace("%branch%", ($Branch ? "-beta $Branch" : '')).
+    Replace("%validate%", ($Validate ? 'validate' : ''))
+
+    return $builder.ToString()
+  }
 }
 process {
 
   Load-SteamCmdExitCodeFile
 
+  $installation_platform = Get-InstallationPlatform
+  $steamcmd_arch_name = Get-SteamCmdArchiveName -Platform $installation_platform
+  $steamcmd_exec_name = Get-SteamCmdExecName -Platform $installation_platform
+  $steamcmd_download_url = $STEAMCMD_DL_URL[$installation_platform]
 
+  $steamcmd_arch_path = Join-Path -Path $DOWNLOAD_PATH -ChildPath $steamcmd_arch_name
+  $steamcmd_exec_path = Join-Path -Path $CMD_INSTALL_PATH -ChildPath $steamcmd_exec_name
+
+  # Check if SteamCmd is installed
+
+  Write-Verbose "Creating working directories..."
+
+  if(-not (Test-Path -Path $BASE_TEMP_PATH)) {
+    New-Item -Path $BASE_TEMP_PATH -ItemType Directory
+  }
+
+  if(-not (Test-Path -Path $DOWNLOAD_PATH)) {
+    New-Item -Path $DOWNLOAD_PATH -ItemType Directory
+  }
+
+  $steamcmd_installed = Test-Path -Path $steamcmd_exec_path
+
+  if(-not $steamcmd_installed) {
+    Install-SteamCmd $steamcmd_download_url $steamcmd_arch_path
+  }
+  $login_string = Get-LoginString
+
+  Write-Verbose "Login string: $login_string"
+
+  if($Clean) {
+    Clean-InstallDir
+  }
+
+  [string] $script = (Compose-StartupScript $login_string)[1]
+
+  $script | Out-File -FilePath $SCRIPT_PATH -Force -Encoding ascii
 }
 end {
 }
