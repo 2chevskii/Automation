@@ -1,0 +1,17 @@
+{
+  "folders": [
+    { "path": "../steam-app-installer" },
+    { "path": "../SteamCMD" },
+    { "path": "../Plugins Sorter" },
+    { "path": "../Rust References" },
+    { "path": "../Rust Dedicated Server" },
+    { "path": "../", "name": "Workspace root" }
+  ],
+  "extensions": {
+    "recommendations": [
+      "ms-vscode.powershell",
+      "esbenp.prettier-vscode",
+      "EditorConfig.EditorConfig"
+    ]
+  }
+}
