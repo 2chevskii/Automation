@@ -3,6 +3,7 @@
 #requires -version 6.0
 
 using namespace System.IO
+using namespace System.Text
 
 [CmdletBinding(
   DefaultParameterSetName = 'AllParameterSets',
@@ -143,7 +144,7 @@ quit
       [string] $Platform
     )
 
-    switch($Platform) {
+    switch ($Platform) {
       windows {
         return 'steamcmd.exe'
       }
@@ -169,15 +170,15 @@ quit
       $arch_path
     )
 
-    Write-Output "Installing SteamCmd..."
+    Write-Output 'Installing SteamCmd...'
 
-    Write-Verbose "Cleaning installation directory and old archives..."
+    Write-Verbose 'Cleaning installation directory and old archives...'
 
-    if(Test-Path -Path $CMD_INSTALL_PATH) {
+    if (Test-Path -Path $CMD_INSTALL_PATH) {
       Get-ChildItem $CMD_INSTALL_PATH | Remove-Item -Force -Recurse
     }
 
-    if(Test-Path -Path $arch_path) {
+    if (Test-Path -Path $arch_path) {
       Remove-Item $arch_path
     }
 
@@ -189,17 +190,17 @@ quit
 
     Expand-Archive -Path $arch_path -DestinationPath $CMD_INSTALL_PATH
 
-    Write-Verbose "Cleaning unnecessary distribution files"
+    Write-Verbose 'Cleaning unnecessary distribution files'
 
     Remove-Item -Path $arch_path
 
-    Write-Output "SteamCmd installed"
+    Write-Output 'SteamCmd installed'
   }
 
   function Clean-InstallDir {
     Write-Output "Cleaning installation directory: $InstallPath"
 
-    if(Test-Path -Path $InstallPath) {
+    if (Test-Path -Path $InstallPath) {
       Remove-Item -Path $InstallPath -Force -Recurse
     }
   }
@@ -207,17 +208,31 @@ quit
   function Compose-StartupScript {
     param($login_string)
 
-    Write-Output "Creating startup script..."
+    Write-Output 'Creating startup script...'
 
-    $builder = [System.Text.StringBuilder]::new($SCRIPT_TEMPLATE)
+    $builder = [StringBuilder]::new($SCRIPT_TEMPLATE)
 
-    $builder.Replace("%install-dir%", $InstallPath).
-    Replace("%login-string%", $login_string).
-    Replace("%app-id%", $AppId.ToString()).
-    Replace("%branch%", ($Branch ? "-beta $Branch" : '')).
-    Replace("%validate%", ($Validate ? 'validate' : ''))
+    $builder.Replace('%install-dir%', $InstallPath).
+    Replace('%login-string%', $login_string).
+    Replace('%app-id%', $AppId.ToString()).
+    Replace('%branch%', ($Branch ? "-beta $Branch" : '')).
+    Replace('%validate%', ($Validate ? 'validate' : ''))
 
     return $builder.ToString()
+  }
+
+  function Get-SteamCmdInvokePath {
+    param($exec_name)
+
+    return [Path]::Combine($CMD_INSTALL_PATH, $exec_name)
+  }
+
+  function Invoke-SteamCmd {
+    param($exec_path)
+
+    Write-Verbose "Installing app $AppId"
+
+    Start-Process -FilePath $exec_path -ArgumentList "+runscript $SCRIPT_PATH" -NoNewWindow -Wait
   }
 }
 process {
@@ -234,32 +249,40 @@ process {
 
   # Check if SteamCmd is installed
 
-  Write-Verbose "Creating working directories..."
+  Write-Verbose 'Creating working directories...'
 
-  if(-not (Test-Path -Path $BASE_TEMP_PATH)) {
+  if (-not (Test-Path -Path $BASE_TEMP_PATH)) {
     New-Item -Path $BASE_TEMP_PATH -ItemType Directory
   }
 
-  if(-not (Test-Path -Path $DOWNLOAD_PATH)) {
+  if (-not (Test-Path -Path $DOWNLOAD_PATH)) {
     New-Item -Path $DOWNLOAD_PATH -ItemType Directory
   }
 
   $steamcmd_installed = Test-Path -Path $steamcmd_exec_path
 
-  if(-not $steamcmd_installed) {
+  if (-not $steamcmd_installed) {
     Install-SteamCmd $steamcmd_download_url $steamcmd_arch_path
   }
   $login_string = Get-LoginString
 
   Write-Verbose "Login string: $login_string"
 
-  if($Clean) {
+  if ($Clean) {
     Clean-InstallDir
   }
 
   [string] $script = (Compose-StartupScript $login_string)[1]
 
+  Write-Verbose "Emitting startup script to: $SCRIPT_PATH"
+
   $script | Out-File -FilePath $SCRIPT_PATH -Force -Encoding ascii
+
+  Write-Output 'Starting app installation...'
+
+  $exec_path = Get-SteamCmdInvokePath -exec_name (Get-SteamCmdExecName -Platform (Get-InstallationPlatform))
+
+  Invoke-SteamCmd $exec_path
 }
 end {
 }
